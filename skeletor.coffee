@@ -212,33 +212,55 @@ class Controller extends Module
     @refreshElements()
     @el
 
+  @setElem: (elem, attr, val) ->
+    switch attr
+      when 'val' then elem.val(val)
+      when 'text' then elem.text(val)
+      when 'html' then elem.html(val)
+      when 'class'
+        elem.attr('class', val)
+      else
+        klass = attr.replace(/\./, '')
+        if klass[0] == '!'
+          klass = klass.slice(1)
+          val = !val
+
+        if val
+          elem.addClass(klass)
+        else
+          elem.removeClass(klass)
+
   bindData: ->
     if @model?
       @$("*[data-bind]").each (i, elem) =>
         tagName = elem.tagName.toLowerCase()
         $elem = $(elem)
-        attr = $elem.data('bind')
-        val = @model.get(attr)
+        dataBind = $elem.data('bind')
+        dataBindMatch = dataBind.match(/([\w.\-]+)[ ]?([\w.!\-]+)?/)
+        unless dataBindMatch
+          console.error "Invalid data-bind attribute: '#{dataBind}'"
+          return
+
+        if dataBindMatch.length == 3 && dataBindMatch[2]
+          modelAttr = dataBindMatch[1]
+          elemAttr = dataBindMatch[2]
+        else
+          modelAttr = dataBindMatch[1]
+
+        val = @model.get(modelAttr)
 
         switch tagName
           when 'input'
-            # Initialize element
-            $elem.val(val)
+            elemAttr ||= 'val'
 
-            # Update model when element changes
-            $elem.bind 'change', => @model.set(attr, $elem.val())
-            $elem.bind 'keyup', => @model.set(attr, $elem.val())
-
-            # Update element when model changes
-            @model.bind "change:#{attr}", ->
-              $elem.val(@get(attr))
+            Controller.setElem($elem, elemAttr, val)
+            $elem.bind 'change keyup', => @model.set(modelAttr, $elem.val())
+            @model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
           else
-            # Initialize element
-            $elem.text(val)
+            elemAttr ||= 'text'
 
-            # Update element when model changes
-            @model.bind "change:#{attr}", ->
-              $elem.text(@get(attr))
+            Controller.setElem($elem, elemAttr, val)
+            @model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
 
 
 window.Model = Model

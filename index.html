@@ -1,16 +1,22 @@
 <!doctype html>
 <html>
   <head>
+    <link rel="stylesheet" type="text/css" href="app.css" />
     <script type='text/javascript' src='lib/zepto.js'></script>
     <script type='text/javascript' src='lib/underscore.js'></script>
     <script type='text/javascript' src='lib/skeletor.js'></script>
     <script type='text/javascript' src='lib/app.js'></script>
     <script type='text/html' id='character-template'>
       <h2 data-bind='name'></h2>
+      <h2 data-bind='name class'></h2>
       <form>
         <input type='text' data-bind='name' />
         <input type='text' data-bind='name' />
       </form>
+      <div id='skills'></div>
+    </script>
+    <script type='text/html' id='skill-template'>
+      <div class='skill' data-bind='skills.{id} .checked'><div class='check-box'></div>{name}</div>
     </script>
   </head>
   <body>
