@@ -12,6 +12,8 @@
       <form>
         <label>Name</label>
         <input type='text' data-bind='name' />
+        <label>Gender</label>
+        <input type='text' data-bind='gender' />
         <label>Race</label>
         <input type='text' data-bind='race' />
       </form>
@@ -24,8 +26,8 @@
       <h2>Skills</h2>
       <div id='skills'></div>
       <h2>Race</h2>
-      <ul id='races' data-bind='race data'>
-        <li class='elf'>Elf</li>
+      <ul id='races' data-bind='gender,race data'>
+        <li class='elf male'>Elf Male</li>
       </ul>
     </script>
     <script type='text/html' id='skill-template'>

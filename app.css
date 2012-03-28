@@ -6,6 +6,6 @@
   display: none;
 }
 
-*[data-race='elf'] .elf {
+*[data-race='elf'][data-gender='male'] .elf.male {
   display: block !important;
 }

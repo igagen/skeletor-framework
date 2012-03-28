@@ -423,14 +423,14 @@ class Controller extends Module
         @model.bind "change:#{modelAttr}", => @updateSelect $select
 
   registerDataBind: (model, modelAttr, elem, elemAttr) ->
-    console.log 'modelAttr', modelAttr
-    console.log 'elemAttr', elemAttr
+    if elemAttr == 'data'
+      modelAttrs = modelAttr.split(',')
+      for modelAttr in modelAttrs
+        elemAttr = "data-#{modelAttr}"
+        @registerDataBind(model, modelAttr, elem, elemAttr)
 
     tagName = elem.tagName.toLowerCase()
     $elem = $(elem)
-
-    if elemAttr == 'data'
-      elemAttr = "data-#{modelAttr}"
 
     switch tagName
       when 'input'
@@ -448,8 +448,6 @@ class Controller extends Module
     # Update model on form input change
     if tagName == 'input'
       $elem.bind 'change keyup', -> model.set(modelAttr, $elem.val())
-
-
 
 
 root.Model = Model
