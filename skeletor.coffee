@@ -1,3 +1,19 @@
+root = exports ? this
+$ = root.Zepto || root.jQuery
+
+# Utils
+
+type = do ->
+  classToType = {}
+  for name in "Boolean Number String Function Array Date RegExp Undefined Null".split(" ")
+    classToType["[object " + name + "]"] = name.toLowerCase()
+
+  (obj) ->
+    strType = Object::toString.call(obj)
+    classToType[strType] or "object"
+
+# Events
+
 Events =
   bind: (ev, callback) ->
     evs   = ev.split(' ')
@@ -76,28 +92,63 @@ class Model extends Module
   @crecords: {}
   @attrs: {}
   @idCounter: 0
-
-  @attrs: (attrs) -> @attrs = attrs if attrs?
-
   @uid: -> @idCounter++
+  @store: (@store) ->
+
+  @find: (id) ->
+    record = @records[id]
+    if !record and ("#{id}").match(/c-\d+/)
+      return @findCID(id)
+    throw('Unknown record') unless record
+    record.clone()
+
+  @findCID: (cid) ->
+    record = @crecords[cid]
+    throw('Unknown record') unless record
+    record.clone()
 
   # Instance
 
   constructor: (attrs) ->
     super
-    @load attrs
+
+    console.warn "#{@className()}: No attributes defined" unless Object.keys(@constructor.attrs).length > 0
+    @attrs = JSON.parse(JSON.stringify(attrs || {}))
+    @_defineAccessors(@, @attrs, @constructor.attrs, '')
     @cid ?= 'c-' + @constructor.uid()
 
   load: (attrs) ->
-    @attrs = JSON.parse(JSON.stringify(attrs))
+    setAttr = (obj, attrs) ->
+      for attr, val of attrs
+        if type(obj[attr]) == 'object'
+          setAttr(obj[attr], attrs[attr])
+        else
+          obj[attr] = val
 
-    @defineAccessors(@, @attrs, @constructor.attrs, '')
+    setAttr(@, attrs)
 
-  defineAccessors: (src, target, attrs, path) ->
+  isNew: -> not @exists()
+  isValid: -> not @validate()
+  validate: ->
+  exists: -> @id && @id of @constructor.records
+  className: -> @constructor.name
+
+  dup: (newRecord) ->
+    result = new @constructor(@attributes())
+    if newRecord is false
+      result.cid = @cid
+    else
+      delete result.id
+    result
+
+  clone: ->
+    Object.create(@)
+
+  _defineAccessors: (src, target, attrs, path) ->
     self = @
-    for attr, type of attrs
+    for attr, attrType of attrs
       do (attr, path) =>
-        if typeof attrs[attr] == 'string'
+        if type(attrs[attr]) == 'string'
           Object.defineProperty src, attr,
             get: -> target[attr]
             set: (val) ->
@@ -112,7 +163,57 @@ class Model extends Module
           Object.defineProperty src, attr,
             get: -> target[attr]
 
-          @defineAccessors(target[attr], target[attr].attrs, attrs[attr], "#{path}#{attr}.")
+          @_defineAccessors(target[attr], target[attr].attrs, attrs[attr], "#{path}#{attr}.")
+
+  store: -> @constructor.store
+
+  save: (options = {}, cb = null) ->
+    unless options.validate is false
+      error = @validate()
+      if error
+        @trigger('error', error)
+        return false
+
+    @trigger('beforeSave', options)
+    if @isNew() then @_create(options, cb) else @_update(options, cb)
+
+    @trigger('save', options)
+    @
+
+  updateAttribute: (name, value) ->
+    @[name] = value
+    @save()
+
+  updateAttributes: (atts, options) ->
+    @load(atts)
+    @save(options)
+
+  _create: (options, cb) ->
+    @trigger('beforeCreate', options)
+
+    if @store()?
+      @store().create(@, cb)
+    else
+      @id = @cid
+
+    record = @dup(false)
+    @constructor.records[@id] = record
+    @constructor.crecords[@cid] = record
+
+    clone = record.clone()
+    clone.trigger('create', options)
+    clone.trigger('change', 'create', options)
+    clone
+
+  _update: (options, cb) ->
+    @trigger('beforeUpdate', options)
+    @constructor.records[@id].load @attributes()
+
+    @store()?.update(@, cb)
+
+    @trigger('update', options)
+    @trigger('change', 'update', options)
+    @
 
   _onSet: (attr, val) ->
     @trigger 'change'
@@ -133,10 +234,12 @@ class Model extends Module
     [obj, leafAttr] = @_getLeaf(attr)
     obj[leafAttr] = val
 
+  attributes: -> @toJSON()
+
   toJSON: ->
     addAttrs = (obj, attrs, js) ->
       for k, v of attrs
-        if typeof v == 'object'
+        if type(v) == 'object'
           js[k] = {}
           addAttrs(obj[k], attrs[k], js[k])
         else
@@ -174,6 +277,25 @@ class Model extends Module
     @trigger('unbind')
 
 
+class LocalStore
+  constructor: (klass) -> @className = klass.name
+  count: -> @_get("#{@className}.count") || 0
+  _setCount: (count) -> @_set "#{@className}.count", count
+
+  _get: (key) -> localStorage[key]
+  _set: (key, value) -> localStorage[key] = value
+
+  create: (record, cb) ->
+    record.id = @count() + 1
+    @_setCount(record.id)
+
+    @_set "#{@className}.#{record.id}", JSON.stringify(record)
+    cb(true) if cb?
+
+  update: (record, cb) ->
+    @_set "#{@className}.#{record.id}", JSON.stringify(record)
+    cb(true) if cb?
+
 class Controller extends Module
   @include Events
 
@@ -190,6 +312,8 @@ class Controller extends Module
 
     @el.addClass(@className) if @className
     @el.attr(@attributes) if @attributes
+
+    @registerEventHandlers()
 
     super
 
@@ -230,9 +354,38 @@ class Controller extends Module
         else
           elem.removeClass(klass)
 
+  updateSelect: ($select) ->
+    modelAttr = $select.data('select')
+    optionAttr = 'selected'
+    val = @model.get(modelAttr)
+    $options = $select.find("[data-option]")
+    $options.removeClass(optionAttr)
+    $select.find("[data-option='#{val}']").addClass(optionAttr)
+
+  registerEventHandlers: ->
+    self = @
+    tap = if $.os.ipad then 'touchstart' else 'click'
+    for eventDescriptor, eventHandler of @events
+      match = eventDescriptor.match(/(\w+) (.+)/)
+      event = match[1]
+      event = tap if event == 'tap'
+      selector = match[2]
+
+      if selector == 'document' || selector == 'window'
+        selector = document if selector == 'document'
+        selector = window if selector == 'window'
+        bindFn = 'bind'
+      else
+        bindFn = 'live'
+
+      do (eventHandler) ->
+        $(selector)[bindFn] event, (evt) ->
+          $elem = $(@)
+          self[eventHandler](evt, $elem)
+
   bindData: ->
     if @model?
-      @$("*[data-bind]").each (i, elem) =>
+      @$('*[data-bind]').each (i, elem) =>
         tagName = elem.tagName.toLowerCase()
         $elem = $(elem)
         dataBind = $elem.data('bind')
@@ -262,6 +415,22 @@ class Controller extends Module
             Controller.setElem($elem, elemAttr, val)
             @model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
 
+      @$('*[data-select]').each (i, elem) =>
+        $select = $(elem)
+        $options = $select.find("[data-option]")
+        modelAttr = $select.data('select')
 
-window.Model = Model
-window.Controller = Controller
+        # Set initial value
+        @updateSelect $select
+
+        # Set value on click
+        self = @
+        $options.bind 'click', -> self.model.set modelAttr, $(@).data('option')
+
+        # Update on model changes
+        @model.bind "change:#{modelAttr}", => @updateSelect $select
+
+
+root.Model = Model
+root.Controller = Controller
+root.LocalStore = LocalStore
