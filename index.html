@@ -10,10 +10,23 @@
       <h2 data-bind='name'></h2>
       <h2 data-bind='name class'></h2>
       <form>
+        <label>Name</label>
         <input type='text' data-bind='name' />
-        <input type='text' data-bind='name' />
+        <label>Race</label>
+        <input type='text' data-bind='race' />
       </form>
+      <h2>Class:</h2>
+      <p data-bind='klass'></p>
+      <ul data-select='klass'>
+        <li data-option='fighter'>Fighter</li>
+        <li data-option='wizard'>Wizard</li>
+      </ul>
+      <h2>Skills</h2>
       <div id='skills'></div>
+      <h2>Race</h2>
+      <ul id='races' data-bind='race data'>
+        <li class='elf'>Elf</li>
+      </ul>
     </script>
     <script type='text/html' id='skill-template'>
       <div class='skill' data-bind='skills.{id} .checked'><div class='check-box'></div>{name}</div>

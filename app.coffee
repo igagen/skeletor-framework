@@ -1,7 +1,8 @@
 class Character extends Model
   @attrs:
     name: 'string'
-    age: 'string'
+    klass: 'string'
+    race: 'string'
     skills:
       survival: 'number'
       'move-silently': 'number'

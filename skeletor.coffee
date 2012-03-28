@@ -337,6 +337,13 @@ class Controller extends Module
     @el
 
   @setElem: (elem, attr, val) ->
+    val ?= ''
+
+    console.log 'setElem', attr, val
+
+    if attr.match(/data-\w+/)
+      return elem.attr(attr, val)
+
     switch attr
       when 'val' then elem.val(val)
       when 'text' then elem.text(val)
@@ -386,34 +393,19 @@ class Controller extends Module
   bindData: ->
     if @model?
       @$('*[data-bind]').each (i, elem) =>
-        tagName = elem.tagName.toLowerCase()
         $elem = $(elem)
         dataBind = $elem.data('bind')
-        dataBindMatch = dataBind.match(/([\w.\-]+)[ ]?([\w.!\-]+)?/)
-        unless dataBindMatch
-          console.error "Invalid data-bind attribute: '#{dataBind}'"
-          return
+        dataBindStatements = dataBind.split ';'
+        for dataBindStatement in dataBindStatements
+          dataBindStatement = dataBindStatement.trim()
+          attrs = dataBindStatement.split ' '
+          unless attrs.length == 1 || attrs.length == 2
+            return console.error "Invalid data-bind: '#{dataBindStatement}'"
 
-        if dataBindMatch.length == 3 && dataBindMatch[2]
-          modelAttr = dataBindMatch[1]
-          elemAttr = dataBindMatch[2]
-        else
-          modelAttr = dataBindMatch[1]
+          modelAttr = attrs[0]
+          elemAttr = attrs[1]
 
-        val = @model.get(modelAttr)
-
-        switch tagName
-          when 'input'
-            elemAttr ||= 'val'
-
-            Controller.setElem($elem, elemAttr, val)
-            $elem.bind 'change keyup', => @model.set(modelAttr, $elem.val())
-            @model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
-          else
-            elemAttr ||= 'text'
-
-            Controller.setElem($elem, elemAttr, val)
-            @model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
+          @registerDataBind(@model, modelAttr, elem, elemAttr)
 
       @$('*[data-select]').each (i, elem) =>
         $select = $(elem)
@@ -429,6 +421,35 @@ class Controller extends Module
 
         # Update on model changes
         @model.bind "change:#{modelAttr}", => @updateSelect $select
+
+  registerDataBind: (model, modelAttr, elem, elemAttr) ->
+    console.log 'modelAttr', modelAttr
+    console.log 'elemAttr', elemAttr
+
+    tagName = elem.tagName.toLowerCase()
+    $elem = $(elem)
+
+    if elemAttr == 'data'
+      elemAttr = "data-#{modelAttr}"
+
+    switch tagName
+      when 'input'
+        elemAttr ||= 'val'
+      else
+        elemAttr ||= 'text'
+
+    # Initialize element with model value
+    val = model.get(modelAttr)
+    Controller.setElem($elem, elemAttr, val)
+
+    # Update element on model change
+    model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
+
+    # Update model on form input change
+    if tagName == 'input'
+      $elem.bind 'change keyup', -> model.set(modelAttr, $elem.val())
+
+
 
 
 root.Model = Model

@@ -1,3 +1,11 @@
 .skill.checked {
   color: green;
 }
+
+#races li {
+  display: none;
+}
+
+*[data-race='elf'] .elf {
+  display: block !important;
+}
