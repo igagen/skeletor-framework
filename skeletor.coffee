@@ -76,85 +76,93 @@ class Module
     obj.extended?.apply(@)
     this
 
-  @proxy: (func) ->
-    => func.apply(@, arguments)
+class ObjectModel extends Module
+  @include Events
 
-  proxy: (func) ->
-    => func.apply(@, arguments)
+  @copy: (src, target) ->
+    for attr, val of src
+      if typeof val == 'object'
+        target[attr] = {}
+        @copy(src[attr], target[attr])
+      else
+        target[attr] = val
+
+  constructor: () ->
+    super
+    @attrs = {}
+
+  getLeaf: (obj, attr) ->
+    attrs = attr.split('.')
+    leafAttr = attrs.pop()
+    for a in attrs
+      obj[a] ?= {}
+      obj = obj[a]
+    [obj, leafAttr]
+
+  get: (attr) ->
+    [obj, leafAttr] = @getLeaf(@attrs, attr)
+    obj[leafAttr]
+
+  set: (attr, val) ->
+    [obj, leafAttr] = @getLeaf(@attrs, attr)
+    obj[leafAttr] = val
+    @trigger 'change'
+    @trigger "change:#{attr}"
+
+  toJSON: ->
+    json = {}
+    @constructor.copy @attrs, json
+    json
+
+class ArrayModel extends Module
+  @include Events
 
   constructor: ->
-    @init?(arguments...)
+    super
+    @array = []
+
+  get: (index) -> @array[index]
+
+  has: (item) -> @array.indexOf(item) != -1
+
+  count: -> @array.length
+
+  add: (item) ->
+    @array.push item
+    @trigger 'add', item
+
+  remove: (item) ->
+    loop
+      index = @array.indexOf item
+      if index == -1
+        break
+      else
+        @array.splice(index, 1)
+        @trigger 'remove', item, index
+
+  removeAt: (index) ->
+    item = @array[index]
+    @array.splice index, 1
+    @trigger 'remove', item, index
+
+  toJSON: -> @array.slice(0)
 
 class Model extends Module
-  @extend Events
-
-  @records: {}
-  @crecords: {}
+  @include Events
   @attrs: {}
-  @idCounter: 0
-  @uid: -> @idCounter++
-  @store: (@store) ->
 
-  @find: (id) ->
-    record = @records[id]
-    if !record and ("#{id}").match(/c-\d+/)
-      return @findCID(id)
-    throw('Unknown record') unless record
-    record.clone()
-
-  @findCID: (cid) ->
-    record = @crecords[cid]
-    throw('Unknown record') unless record
-    record.clone()
-
-  # Instance
-
-  constructor: (attrs) ->
+  constructor: ->
     super
 
-    console.warn "#{@className()}: No attributes defined" unless Object.keys(@constructor.attrs).length > 0
-    @attrs = JSON.parse(JSON.stringify(attrs || {}))
-    @_defineAccessors(@, @attrs, @constructor.attrs, '')
-    @cid ?= 'c-' + @constructor.uid()
+    @attrs = {}
 
-  load: (attrs) ->
-    setAttr = (obj, attrs) ->
-      for attr, val of attrs
-        if type(obj[attr]) == 'object'
-          setAttr(obj[attr], attrs[attr])
-        else
-          obj[attr] = val
+    @defineAccessors(@, @attrs, @constructor.attrs, '')
 
-    setAttr(@, attrs)
-
-  isNew: -> not @exists()
-  isValid: -> not @validate()
-  validate: ->
-  exists: -> @id && @id of @constructor.records
-  className: -> @constructor.name
-
-  dup: (newRecord) ->
-    result = new @constructor(@attributes())
-    if newRecord is false
-      result.cid = @cid
-    else
-      delete result.id
-    result
-
-  clone: ->
-    Object.create(@)
-
-  _defineAccessors: (src, target, attrs, path) ->
+  defineAccessors: (src, target, attrs, path) ->
     self = @
     for attr, attrType of attrs
       do (attr, path) =>
-        if type(attrs[attr]) == 'string'
-          Object.defineProperty src, attr,
-            get: -> target[attr]
-            set: (val) ->
-              target[attr] = val
-              self._onSet("#{path}#{attr}", val)
-        else # Nested attributes
+        if typeof attrType == 'object'
           target[attr] ||= {}
           target[attr].attrs = {}
           for k, v of target[attr] when k != 'attrs'
@@ -163,57 +171,13 @@ class Model extends Module
           Object.defineProperty src, attr,
             get: -> target[attr]
 
-          @_defineAccessors(target[attr], target[attr].attrs, attrs[attr], "#{path}#{attr}.")
-
-  store: -> @constructor.store
-
-  save: (options = {}, cb = null) ->
-    unless options.validate is false
-      error = @validate()
-      if error
-        @trigger('error', error)
-        return false
-
-    @trigger('beforeSave', options)
-    if @isNew() then @_create(options, cb) else @_update(options, cb)
-
-    @trigger('save', options)
-    @
-
-  updateAttribute: (name, value) ->
-    @[name] = value
-    @save()
-
-  updateAttributes: (atts, options) ->
-    @load(atts)
-    @save(options)
-
-  _create: (options, cb) ->
-    @trigger('beforeCreate', options)
-
-    if @store()?
-      @store().create(@, cb)
-    else
-      @id = @cid
-
-    record = @dup(false)
-    @constructor.records[@id] = record
-    @constructor.crecords[@cid] = record
-
-    clone = record.clone()
-    clone.trigger('create', options)
-    clone.trigger('change', 'create', options)
-    clone
-
-  _update: (options, cb) ->
-    @trigger('beforeUpdate', options)
-    @constructor.records[@id].load @attributes()
-
-    @store()?.update(@, cb)
-
-    @trigger('update', options)
-    @trigger('change', 'update', options)
-    @
+          @defineAccessors(target[attr], target[attr].attrs, attrs[attr], "#{path}#{attr}.")
+        else # Nested attributes
+          Object.defineProperty src, attr,
+            get: -> target[attr]
+            set: (val) ->
+              target[attr] = val
+              self._onSet("#{path}#{attr}", val)
 
   _onSet: (attr, val) ->
     @trigger 'change'
@@ -222,8 +186,11 @@ class Model extends Module
   _getLeaf: (attr) ->
     attrs = attr.split('.')
     leafAttr = attrs.pop()
-    obj = @
-    obj = obj[a] for a in attrs
+    obj = @attrs
+    for a in attrs
+      obj[a] ?= {}
+      obj[a].attrs ?= {}
+      obj = obj[a].attrs
     [obj, leafAttr]
 
   get: (attr) ->
@@ -233,68 +200,249 @@ class Model extends Module
   set: (attr, val) ->
     [obj, leafAttr] = @_getLeaf(attr)
     obj[leafAttr] = val
-
-  attributes: -> @toJSON()
+    @_onSet(attr, val)
 
   toJSON: ->
-    addAttrs = (obj, attrs, js) ->
-      for k, v of attrs
-        if type(v) == 'object'
-          js[k] = {}
-          addAttrs(obj[k], attrs[k], js[k])
+    convert = (src, target) ->
+      for k, v of src
+        if k == 'attrs'
+          convert(v, target)
         else
-          js[k] = obj[k] if obj[k]?
-      js
+          if typeof v == 'object'
+            target[k] = {}
+            convert(src[k], target[k])
+          else
+            target[k] = v
 
-    addAttrs(@, @constructor.attrs, {})
+    json = {}
+    convert(@attrs, json)
+    json
 
-  eql: (rec) ->
-    !!(rec and rec.constructor is @constructor and
-      (rec.id is @id or rec.cid is @cid))
+  # _getLeaf: (attr) ->
+  #   attrs = attr.split('.')
+  #   leafAttr = attrs.pop()
+  #   obj = @
+  #   obj = obj[a] for a in attrs
+  #   [obj, leafAttr]
 
-  # Event Instance Methods
+  # get: (attr) ->
+  #   [obj, leafAttr] = @_getLeaf(attr)
+  #   obj[leafAttr]
 
-  bind: (events, callback) ->
-    @constructor.bind events, binder = (record) =>
-      if record && @eql(record)
-        callback.apply(@, arguments)
-    @constructor.bind 'unbind', unbinder = (record) =>
-      if record && @eql(record)
-        @constructor.unbind(events, binder)
-        @constructor.unbind('unbind', unbinder)
-    binder
-
-  one: (events, callback) ->
-    binder = @bind events, =>
-      @constructor.unbind(events, binder)
-      callback.apply(@)
-
-  trigger: (args...) ->
-    args.splice(1, 0, @)
-    @constructor.trigger(args...)
-
-  unbind: ->
-    @trigger('unbind')
+  # set: (attr, val) ->
+  #   [obj, leafAttr] = @_getLeaf(attr)
+  #   obj[leafAttr] = val
 
 
-class LocalStore
-  constructor: (klass) -> @className = klass.name
-  count: -> @_get("#{@className}.count") || 0
-  _setCount: (count) -> @_set "#{@className}.count", count
+  # @extend Events
 
-  _get: (key) -> localStorage[key]
-  _set: (key, value) -> localStorage[key] = value
+  # @records: {}
+  # @crecords: {}
+  # @attrs: {}
+  # @idCounter: 0
+  # @uid: -> @idCounter++
+  # @store: (@store) ->
 
-  create: (record, cb) ->
-    record.id = @count() + 1
-    @_setCount(record.id)
+  # @find: (id) ->
+  #   record = @records[id]
+  #   if !record and ("#{id}").match(/c-\d+/)
+  #     return @findCID(id)
+  #   throw('Unknown record') unless record
+  #   record.clone()
 
-    @_set "#{@className}.#{record.id}", JSON.stringify(record)
-    cb(true) if cb?
+  # @findCID: (cid) ->
+  #   record = @crecords[cid]
+  #   throw('Unknown record') unless record
+  #   record.clone()
 
-  update: (record, cb) ->
-    @_set "#{@className}.#{record.id}", JSON.stringify(record)
-    cb(true) if cb?
+  # # Instance
+
+  # constructor: (attrs) ->
+  #   super
+
+  #   console.warn "#{@className()}: No attributes defined" unless Object.keys(@constructor.attrs).length > 0
+  #   @attrs = JSON.parse(JSON.stringify(attrs || {}))
+  #   @_defineAccessors(@, @attrs, @constructor.attrs, '')
+  #   @cid ?= 'c-' + @constructor.uid()
+
+  # load: (attrs) ->
+  #   setAttr = (obj, attrs) ->
+  #     for attr, val of attrs
+  #       if type(obj[attr]) == 'object'
+  #         setAttr(obj[attr], attrs[attr])
+  #       else
+  #         obj[attr] = val
+
+  #   setAttr(@, attrs)
+
+  # isNew: -> not @exists()
+  # isValid: -> not @validate()
+  # validate: ->
+  # exists: -> @id && @id of @constructor.records
+  # className: -> @constructor.name
+
+  # dup: (newRecord) ->
+  #   result = new @constructor(@attributes())
+  #   if newRecord is false
+  #     result.cid = @cid
+  #   else
+  #     delete result.id
+  #   result
+
+  # clone: ->
+  #   Object.create(@)
+
+  # _defineAccessors: (src, target, attrs, path) ->
+  #   self = @
+  #   for attr, attrType of attrs
+  #     do (attr, path) =>
+  #       if type(attrs[attr]) == 'string'
+  #         Object.defineProperty src, attr,
+  #           get: -> target[attr]
+  #           set: (val) ->
+  #             target[attr] = val
+  #             self._onSet("#{path}#{attr}", val)
+  #       else # Nested attributes
+  #         target[attr] ||= {}
+  #         target[attr].attrs = {}
+  #         for k, v of target[attr] when k != 'attrs'
+  #           target[attr].attrs[k] = v
+
+  #         Object.defineProperty src, attr,
+  #           get: -> target[attr]
+
+  #         @_defineAccessors(target[attr], target[attr].attrs, attrs[attr], "#{path}#{attr}.")
+
+  # store: -> @constructor.store
+
+  # save: (options = {}, cb = null) ->
+  #   unless options.validate is false
+  #     error = @validate()
+  #     if error
+  #       @trigger('error', error)
+  #       return false
+
+  #   @trigger('beforeSave', options)
+  #   if @isNew() then @_create(options, cb) else @_update(options, cb)
+
+  #   @trigger('save', options)
+  #   @
+
+  # updateAttribute: (name, value) ->
+  #   @[name] = value
+  #   @save()
+
+  # updateAttributes: (atts, options) ->
+  #   @load(atts)
+  #   @save(options)
+
+  # _create: (options, cb) ->
+  #   @trigger('beforeCreate', options)
+
+  #   if @store()?
+  #     @store().create(@, cb)
+  #   else
+  #     @id = @cid
+
+  #   record = @dup(false)
+  #   @constructor.records[@id] = record
+  #   @constructor.crecords[@cid] = record
+
+  #   clone = record.clone()
+  #   clone.trigger('create', options)
+  #   clone.trigger('change', 'create', options)
+  #   clone
+
+  # _update: (options, cb) ->
+  #   @trigger('beforeUpdate', options)
+  #   @constructor.records[@id].load @attributes()
+
+  #   @store()?.update(@, cb)
+
+  #   @trigger('update', options)
+  #   @trigger('change', 'update', options)
+  #   @
+
+  # _onSet: (attr, val) ->
+  #   @trigger 'change'
+  #   @trigger "change:#{attr}"
+
+  # _getLeaf: (attr) ->
+  #   attrs = attr.split('.')
+  #   leafAttr = attrs.pop()
+  #   obj = @
+  #   obj = obj[a] for a in attrs
+  #   [obj, leafAttr]
+
+  # get: (attr) ->
+  #   [obj, leafAttr] = @_getLeaf(attr)
+  #   obj[leafAttr]
+
+  # set: (attr, val) ->
+  #   [obj, leafAttr] = @_getLeaf(attr)
+  #   obj[leafAttr] = val
+
+  # attributes: -> @toJSON()
+
+  # toJSON: ->
+  #   addAttrs = (obj, attrs, js) ->
+  #     for k, v of attrs
+  #       if type(v) == 'object'
+  #         js[k] = {}
+  #         addAttrs(obj[k], attrs[k], js[k])
+  #       else
+  #         js[k] = obj[k] if obj[k]?
+  #     js
+
+  #   addAttrs(@, @constructor.attrs, {})
+
+  # eql: (rec) ->
+  #   !!(rec and rec.constructor is @constructor and
+  #     (rec.id is @id or rec.cid is @cid))
+
+  # # Event Instance Methods
+
+  # bind: (events, callback) ->
+  #   @constructor.bind events, binder = (record) =>
+  #     if record && @eql(record)
+  #       callback.apply(@, arguments)
+  #   @constructor.bind 'unbind', unbinder = (record) =>
+  #     if record && @eql(record)
+  #       @constructor.unbind(events, binder)
+  #       @constructor.unbind('unbind', unbinder)
+  #   binder
+
+  # one: (events, callback) ->
+  #   binder = @bind events, =>
+  #     @constructor.unbind(events, binder)
+  #     callback.apply(@)
+
+  # trigger: (args...) ->
+  #   args.splice(1, 0, @)
+  #   @constructor.trigger(args...)
+
+  # unbind: ->
+  #   @trigger('unbind')
+
+
+# class LocalStore
+#   constructor: (klass) -> @className = klass.name
+#   count: -> @_get("#{@className}.count") || 0
+#   _setCount: (count) -> @_set "#{@className}.count", count
+
+#   _get: (key) -> localStorage[key]
+#   _set: (key, value) -> localStorage[key] = value
+
+#   create: (record, cb) ->
+#     record.id = @count() + 1
+#     @_setCount(record.id)
+
+#     @_set "#{@className}.#{record.id}", JSON.stringify(record)
+#     cb(true) if cb?
+
+#   update: (record, cb) ->
+#     @_set "#{@className}.#{record.id}", JSON.stringify(record)
+#     cb(true) if cb?
 
 class Controller extends Module
   @include Events
@@ -451,5 +599,7 @@ class Controller extends Module
 
 
 root.Model = Model
+root.ObjectModel = ObjectModel
+root.ArrayModel = ArrayModel
 root.Controller = Controller
-root.LocalStore = LocalStore
+# root.LocalStore = localStorage

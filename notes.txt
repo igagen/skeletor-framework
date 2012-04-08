@@ -1,0 +1,125 @@
+Getters and Setters
+-------------------
+
+need easy ability to convert entire object to JSON
+  attach nested models inline in attrs
+
+need sensible attribute structure
+
+  attrs, would contain just the attributes your model is responsible for
+  where do nested models go?
+
+all top level accessors have getter setter defined on model object, pointing to attr
+any Object, Array, or Model attrs, have delegates
+
+
+toJSON
+  loop thru attrs, if nested model, call toJSON on it
+
+
+attrs:
+  name: null
+  level: null
+  wealth:
+    str: null
+    dex: null
+    con: null
+    int: null
+    wis: null
+    cha: null
+
+delegates:
+  abilities: ModelDelegate
+  skills: ObjectDelegate
+  languages: ArrayDelegate
+  abilities: ObjectDelegate
+
+
+Abilities
+  @attrs:
+    str: Number
+    dex: Number
+    con: Number
+    int: Number
+    wis: Number
+    cha: Number
+
+Character
+  @attrs:
+    name: String
+    level: Number
+    abilities: Abilities
+    skills: Object
+    languages: Array
+    wealth:
+      platinum: Number
+      gold: Number
+      silver: Number
+      copper: Number
+
+
+
+
+c = new Character()
+c.abilities.str = 18
+c.get('abilities.str')
+c.set('abilities.dex', 16)
+c.get('abilities.dex')
+c.abilities.get('dex')
+c.abilities.dex
+
+
+
+character.get('name')
+character.name
+character.set('name', 'Turan')
+character.name = 'Turan'
+character.languages.add('common')
+character.languages.remove('common')
+character.languages.length
+character.languages.get(0)
+character.languages.set(0, 'elven')
+character.skills.get('appraisal')
+character.skills.set('appraisal', 2)
+
+
+instance has attrs variable that holds all data for that model
+instance has delegates object that handles delegation for getters and setters
+
+character.skills will return ObjectModel instance
+character.abilities will return Abilities instance
+character.abilities.str will call getter on Abilities instance
+
+
+Delegation:
+
+loop through attributes.
+remove models and add to delegates list.
+models can only appear at the first level of the hierarchy
+
+character.name - return attrs.name
+character.deep.nested - return attrs.deep.nested
+character.skills - return
+
+delegate object, has reference to attributes, and potentially other delegate objects
+
+
+attrs:
+  a: String
+  b: Number
+  c:
+    d: String
+    e:
+      f: Number
+
+delegates:
+  c:
+    d:
+
+
+delegate:
+  attrs:
+    name
+    age
+    abilities - model
+    deep - delegate

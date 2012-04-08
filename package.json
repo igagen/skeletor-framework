@@ -1,0 +1,16 @@
+{
+  "name": "Skeletor",
+  "version": "0.3.0",
+  "private": true,
+  "author": "Alex Gagen <alex@inkarnate.com>",
+  "dependencies": {
+    "coffee-script": "1.2.x",
+    "findit": "0.1.x"
+  },
+  "devDependencies": {
+    "mocha": "1.0.x",
+    "should": "0.6.x",
+    "sinon": "1.3.x"
+  },
+  "engine": "node 0.6.x"
+}
