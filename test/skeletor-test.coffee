@@ -18,7 +18,7 @@ class Character extends Model
   @attrs:
     name: String
     level: Number
-    # abilities: Abilities
+    abilities: Abilities
     skills: Object
     languages: Array
     wealth:
@@ -131,6 +131,15 @@ describe 'Model', ->
       model.languages.toJSON().should.eql []
       model.languages.add('dwarven')
       model.languages.get(0).should.eql 'dwarven'
+
+  describe 'Nested Model', ->
+    it 'should work', ->
+      model = new Character()
+
+      model.abilities.str = 18
+      model.abilities.get('str').should.eql 18
+      model.abilities.set('dex', 16)
+      model.abilities.dex.should.eql 16
 
 # describe 'Model', ->
 #   before ->

@@ -155,7 +155,6 @@ class Model extends Module
     super
 
     @attrs = {}
-    @
 
     @defineAccessors(@, @attrs, @constructor.attrs, '')
 
@@ -185,7 +184,9 @@ class Model extends Module
                   target[attr] = val
                   self._onSet("#{path}#{attr}", val)
             else
-              console.warn "Unknown attribute type '#{attrType.name}'"
+              # Nested Model
+              target[attr] = new attrType()
+              Object.defineProperty src, attr, { get: -> target[attr] }
 
   _onSet: (attr, val) ->
     @trigger 'change'
