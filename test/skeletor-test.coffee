@@ -19,8 +19,8 @@ class Character extends Model
     name: String
     level: Number
     # abilities: Abilities
-    # skills: Object
-    # languages: Array
+    skills: Object
+    languages: Array
     wealth:
       platinum: Number
       gold: Number
@@ -108,6 +108,30 @@ describe 'Model', ->
       changeABCHandler.callCount.should.equal 1
       changeGoldHandler.callCount.should.equal 2
 
+  describe 'Nested ObjectModel', ->
+    it 'should work', ->
+      model = new Character()
+
+      model.skills.toJSON().should.eql {}
+      model.skills.set 'climbing', 2
+      model.skills.get('climbing').should.eql 2
+
+  describe 'Nested ArrayModel', ->
+    it 'should work', ->
+      model = new Character()
+
+      model.languages.toJSON().should.eql []
+      model.languages.add 'common'
+      model.languages.add 'elven'
+      model.languages.has('common').should.be.true
+      model.languages.toJSON().should.eql ['common', 'elven']
+      model.languages.remove 'elven'
+      model.languages.toJSON().should.eql ['common']
+      model.languages.removeAt 0
+      model.languages.toJSON().should.eql []
+      model.languages.add('dwarven')
+      model.languages.get(0).should.eql 'dwarven'
+
 # describe 'Model', ->
 #   before ->
 #     @character = new Character()
@@ -146,30 +170,6 @@ describe 'Model', ->
 #       @character.abilities.dex.should.equal 16
 #       @character.abilities.set('con', 18)
 #       @character.abilitieis.con.should.equal 18
-
-#       # Array access
-
-#       @character.languages.should.eql []
-#       @character.languages.add 'common'
-#       @character.languages.add 'elven'
-#       @character.languages.has('common').should.equal true
-#       @character.languages.should.eql ['common', 'elven']
-#       @character.languages.remove 'elven'
-#       @character.languages.should.eql ['common']
-#       @character.languages.removeAt 0
-#       @character.languages.should.eql []
-#       @character.languages.add('dwarven')
-#       @character.languages.get(0).should.eql 'dwarven'
-
-#       # Object access
-
-#       @character.skills.should.eql {}
-#       @character.skills.set 'climbing', 2
-#       @character.skills.climbing.should.eql 2
-#       @character.skills.get('climbing').should.eql 2
-#       @character.get('skills.climbing').should.eql 2
-#       @character.set('skills.swimming', 3)
-#       @character.skills.swimming.should.eql 3
 
 #       # JSON
 

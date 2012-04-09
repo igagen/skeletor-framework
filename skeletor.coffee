@@ -127,9 +127,9 @@ class ArrayModel extends Module
 
   count: -> @array.length
 
-  add: (item) ->
-    @array.push item
-    @trigger 'add', item
+  add: (items...) ->
+    @array.push.apply @array, items
+    @trigger 'add', items
 
   remove: (item) ->
     loop
@@ -155,6 +155,7 @@ class Model extends Module
     super
 
     @attrs = {}
+    @
 
     @defineAccessors(@, @attrs, @constructor.attrs, '')
 
@@ -163,21 +164,28 @@ class Model extends Module
     for attr, attrType of attrs
       do (attr, path) =>
         if typeof attrType == 'object'
-          target[attr] ||= {}
-          target[attr].attrs = {}
-          for k, v of target[attr] when k != 'attrs'
-            target[attr].attrs[k] = v
+          target[attr] = { attrs: {} }
+          target[attr].attrs[k] = v for k, v of target[attr] when k != 'attrs'
 
-          Object.defineProperty src, attr,
-            get: -> target[attr]
+          Object.defineProperty src, attr, { get: -> target[attr] }
 
           @defineAccessors(target[attr], target[attr].attrs, attrs[attr], "#{path}#{attr}.")
-        else # Nested attributes
-          Object.defineProperty src, attr,
-            get: -> target[attr]
-            set: (val) ->
-              target[attr] = val
-              self._onSet("#{path}#{attr}", val)
+        else if typeof attrType == 'function'
+          switch attrType.name
+            when 'Object'
+              target[attr] = new ObjectModel()
+              Object.defineProperty src, attr, { get: -> target[attr] }
+            when 'Array'
+              target[attr] = new ArrayModel()
+              Object.defineProperty src, attr, { get: -> target[attr] }
+            when 'Number', 'String', 'Boolean'
+              Object.defineProperty src, attr,
+                get: -> target[attr]
+                set: (val) ->
+                  target[attr] = val
+                  self._onSet("#{path}#{attr}", val)
+            else
+              console.warn "Unknown attribute type '#{attrType.name}'"
 
   _onSet: (attr, val) ->
     @trigger 'change'
