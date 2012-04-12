@@ -267,10 +267,11 @@ class Controller extends Module
     @refreshElements()
     @el
 
+  remove: ->
+    @el.remove()
+
   @setElem: (elem, attr, val) ->
     val ?= ''
-
-    console.log 'setElem', attr, val
 
     if attr.match(/data-\w+/)
       return elem.attr(attr, val)
