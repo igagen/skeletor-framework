@@ -374,7 +374,10 @@ class Controller extends Module
     Controller.setElem($elem, elemAttr, val)
 
     # Update element on model change
-    model.bind "change:#{modelAttr}", -> Controller.setElem($elem, elemAttr, @get(modelAttr))
+    model.bind "change:#{modelAttr}", ->
+      Controller.setElem($elem, elemAttr, @get(modelAttr))
+      animateFn = $elem.data('animate')
+      $elem[animateFn]() if animateFn?
 
     # Update model on form input change
     if tagName == 'input'
