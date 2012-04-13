@@ -363,6 +363,7 @@ class Controller extends Module
 
     tagName = elem.tagName.toLowerCase()
     $elem = $(elem)
+    animateFn = $elem.data('animate')
 
     switch tagName
       when 'input'
@@ -370,19 +371,47 @@ class Controller extends Module
       else
         elemAttr ||= 'text'
 
-    # Initialize element with model value
-    val = model.get(modelAttr)
-    Controller.setElem($elem, elemAttr, val)
+    fnMatch = modelAttr.match(/(\w+)\(\)$/)
+    if fnMatch && fnMatch.length == 2
+      fn = fnMatch[1]
 
-    # Update element on model change
-    model.bind "change:#{modelAttr}", ->
-      Controller.setElem($elem, elemAttr, @get(modelAttr))
-      animateFn = $elem.data('animate')
-      $elem[animateFn]() if animateFn?
+      dependenciesMatch = modelAttr.match(/([\w.]+)(,[\w.]+)*:\w+\(\)$/)
+      if dependenciesMatch
+        for i in [1...dependenciesMatch.length]
+          dependency = dependenciesMatch[i]
+          if dependency?
+            dependency = dependency.replace(/,/, '')
 
-    # Update model on form input change
-    if tagName == 'input'
-      $elem.bind 'change keyup', -> model.set(modelAttr, $elem.val())
+            # Update element on dependency changed
+            model.bind "change:#{dependency}", ->
+              Controller.setElem($elem, elemAttr, @[fn]())
+              $elem[animateFn]() if animateFn?
+      else
+        # Update element on model change
+        model.bind "change", ->
+          Controller.setElem($elem, elemAttr, @[fn]())
+          animateFn = $elem.data('animate')
+          $elem[animateFn]() if animateFn?
+
+      # Initialize element with function value
+      val = model[fn]()
+      Controller.setElem($elem, elemAttr, val)
+    else
+      # Initialize element with model value
+      val = model.get(modelAttr)
+      Controller.setElem($elem, elemAttr, val)
+
+      # Update element on model change
+      model.bind "change:#{modelAttr}", ->
+        Controller.setElem($elem, elemAttr, @get(modelAttr))
+        animateFn = $elem.data('animate')
+        $elem[animateFn]() if animateFn?
+
+      # Update model on form input change
+      if tagName == 'input'
+        $elem.bind 'change keyup', -> model.set(modelAttr, $elem.val())
+
+    $elem[animateFn](true) if animateFn?
 
 
 root.Model = Model
